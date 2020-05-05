@@ -1,0 +1,161 @@
+---
+title: "Project C"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+
+
+```{r eval=F}
+# R studio API
+setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
+```
+
+# Libraries
+```{r warning=F, message=F}
+library(tidyverse)
+library(caret)
+library(careless)
+library(xgboost)
+```
+
+# Data import and cleaning
+```{r}
+# Data import
+c_tbl <- read_csv("../data/project c data.csv") %>%
+  mutate(id     = factor(id)) 
+
+# Data cleaning
+# identify long strings
+  # Personality scale
+BFAS_longstring <- c_tbl %>%
+  select(BFAS_A_1:BFAS_A_100) %>%
+  longstring(., avg = T) %>%
+  # add unique ID
+  mutate(id              = c_tbl$id) %>%
+  # rename longstr varaible
+  rename(BFAS_longstr         = longstr) %>%
+  select(-avgstr) %>%
+  # reorder variables
+  select(id, everything())
+
+  # Self-efficacy scale
+SE_longstring <- c_tbl %>%
+  select(SE_1:SE_16) %>%
+  longstring(., avg = T) %>%
+  # add unique ID
+  mutate(id              = c_tbl$id) %>%
+  # rename longstr varaible
+  rename(SE_longstr         = longstr) %>%
+  select(-avgstr) %>%
+  # reorder variables
+  select(id, everything())
+
+  # Test anxiety scale
+anx_longstring <- c_tbl %>%
+  select(anx_1:anx_10) %>%
+  longstring(., avg = T) %>%
+  # add unique ID
+  mutate(id              = c_tbl$id) %>%
+  # rename longstr varaible
+  rename(anx_longstr         = longstr) %>%
+  select(-avgstr) %>%
+  # reorder variables
+  select(id, everything())
+
+# Cleaned dataset
+c_tbl_cleaned <- c_tbl %>%
+  # combine longstring variables to data
+  full_join(BFAS_longstring, by = "id") %>%
+  full_join(SE_longstring,   by = "id") %>%
+  full_join(anx_longstring,  by = "id") %>%
+  # drop missing values in dependent variable: Final exam
+  drop_na(Final) %>%
+  # convert variables to appropriate type
+  mutate(Gender = factor(Gender)) %>%
+  # remove id column
+  select(-id) %>%
+  # reorder to make DV as 1st column
+  select(Final, everything())
+
+```
+
+
+# Analysis
+
+
+
+## XGBoost
+```{r}
+set.seed(511)
+training_row <- sample(seq_len(nrow(c_tbl_cleaned)), size = floor(0.8*nrow(c_tbl_cleaned)))
+# training dataset
+training <- c_tbl_cleaned[training_row,] 
+# test dataset
+test <- c_tbl_cleaned[-training_row,] 
+
+
+# Pre processing data
+training_preproc <- preProcess(training[, 2:154], 
+                               method = c("medianImpute", "scale", "center"))
+training_data <- predict(training_preproc, training)
+
+# Xgboost
+xgb_mod <- train(Final ~ .,
+                  data = training_data,
+                  # XGBoost
+                  method = "xgbLinear", 
+                  # treat missing values
+                  na.action = na.pass,
+                  # set cross-validation to be 10 fold
+                  trControl = trainControl("cv", number = 10)) 
+
+```
+
+## OLS
+```{r}
+lm_mod <- train(Final ~ .,
+                  data = training_data,
+                  # lm
+                  method = "lm", 
+                  # treat missing values
+                  na.action = na.pass,
+                  # set cross-validation to be 10 fold
+                  trControl = trainControl("cv", number = 10)) 
+summary(lm_mod)
+```
+
+# Evaluation
+```{r}
+test_preproc <- preProcess(test[, 2:154], 
+                           method = c("medianImpute", "scale", "center"))
+test_data <- predict(test_preproc, test)
+# XGB predict
+xgb_predict <- predict(xgb_mod, test_data, na.action = na.pass)
+# lm predict
+lm_predict <- predict(lm_mod, test_data, na.action = na.pass)
+
+# correlation between predicted y and y in test set
+xgb_cor <- cor(xgb_predict, test_data$Final, use = "complete.obs")
+lm_cor <- cor(lm_predict, test_data$Final, use = "complete.obs")
+(cor <- list(OLS = round(lm_cor,2),
+             XGB = round(xgb_cor,2)))
+
+# Comparing RMSE and R-squared
+summary(resamples(list(OLS = lm_mod, 
+                       XGB = xgb_mod)))
+dotplot(resamples(list(OLS = lm_mod, 
+                       XGB = xgb_mod)), metric="RMSE")
+dotplot(resamples(list(OLS = lm_mod, 
+                       XGB = xgb_mod)), metric="Rsquared")
+```
+
+
+# Data and intepretation
+
+The dataset includes academic performance of college students enrolled in Introduction to Psychology course. Their exam scores, HSGPA, ACT scores, number of transfer credits, and gender are predictors of Final exam score. Some individual difference variables are also available: item-level and scale-level personality (coded as BFAS), self-efficacy (coded as SE), and test anxiety (coded as anx). Since both item- and scale-level data are in the dataset, using OLS would return rank-deficient results since scale-level predictors are linear transformation of item-level predictors. Thus, using machine learning is more beneficial. 
+
+The question of interest: What predicts performance in students' final exam?
+
+I include all variables as predictors, but no interaction among predictors to reduce the complexity of the analysis. Previous exams are good predictors of performance on final exam. Individual differences can also predict academic performance.
