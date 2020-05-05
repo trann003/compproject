@@ -9,37 +9,6 @@ library(stringi)
 library(stringr)
 library(ggplot2)
 
-# Data import and cleaning
-url0 <- "https://scholar.google.com/scholar?start=20&q=%22covid-19%22+source:psychology&hl=en&as_sdt=0,24"
-url <- "https://scholar.google.com/scholar?start=10&q=%22covid-19%22+source:psychology&hl=en&as_sdt=0,24"
-url2 <- "https://scholar.google.com/scholar?start=40&q=%22covid-19%22+source:psychology&hl=en&as_sdt=0,24"
-url3 <- "https://scholar.google.com/scholar?start=220&q=%22covid-19%22+source:psychology&hl=en&as_sdt=0,24"
-url4 <- "https://scholar.google.com/scholar?start=240&q=%22covid-19%22+source:psychology&hl=en&as_sdt=0,24"
-
-
-scholar_url <- read_html(url0)
-scholar_title <- scholar_url %>%
-  html_nodes(".gs_rt") %>%
-  html_text()
-
-scholar_author <- scholar_url %>%
-  html_nodes(".gs_a") %>%
-  html_text()
-
-scholar_author2 <- scholar_url2 %>%
-  html_nodes(".gs_a") %>%
-  html_text()
-
-scholar_author3 <- scholar_url3 %>%
-  html_nodes(".gs_a") %>%
-  html_text()
-
-
-str_match(scholar_author, "^.+?(?=\\s\\-)")
-str_match(scholar_author, "(?<=\\s\\-[\\s]).+?(?=[\\,][\\s]\\d{4}[\\s]\\-)")
-str_match(scholar_author2, "(?<=\\s\\-[\\s]).+?(?=[\\,][\\s]\\d{4}[\\s]\\-)")
-str_match(scholar_author3, "(?<=[\\- | \\,][\\s])(\\d{4})")[,2]
-
 # function to get Google scholar search results
 scholar_search <- function(x){
   url <- paste("https://scholar.google.com/scholar?start=", 
@@ -78,19 +47,15 @@ for (i in string) {
 }
 
 # final data
-scholar_full <- do.call(rbind, scholar_list)
-
-# data <- tibble(
-#   journal = c("a", "b", "s", "a", "a", "b", "s", "a", "a", "b", 
-#               "s", "a", "n", "n", "w", "g", "q", "y", "p", "l"),
-#   author = c("adf", "fgj", "adf", "fgj", "adf", "fgj", "adf", "fgj", "adf", "fgj", 
-#              "adf", "fgj", "adf", "fgj", "adf", "fgj", "adf", "fgj", "adf", "fgj")
-# )
+scholar_full <- do.call(rbind, scholar_list) %>%
+  as_tibble()
 
 # Visualization
 scholar_full %>%
+  drop_na(journal) %>%
   group_by(journal) %>%
   summarise(publication_count = n()) %>%
   top_n(10) %>%
   ggplot(aes(x = journal, y = publication_count)) +
-  geom_bar(stat = "identity")
+  geom_bar(stat = "identity", fill = "#D49B7E") + 
+  theme_classic()
